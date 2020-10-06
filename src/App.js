@@ -7,7 +7,10 @@ import {
   withAuthenticator,
   AmplifySignOut
 } from '@aws-amplify/ui-react';
-import { API } from 'aws-amplify';
+import {
+  API,
+  Storage,
+} from 'aws-amplify';
 import { listTodos } from './graphql/queries';
 import {
   createTodo as createTodoMutation,
@@ -26,6 +29,14 @@ function App() {
 
   async function fetchTodos() {
     const apiData = await API.graphql({ query: listTodos });
+    const todosFromAPI = apiData.data.listTodos.items;
+    await Promise.all(todosFromAPI.map(async todo => {
+      if (todo.image) {
+        const image = await Storage.get(todo.image);
+        todo.image = image;
+      }
+      return todo;
+    }))
     setTodos(apiData.data.listTodos.items);
   }
 
@@ -33,6 +44,10 @@ function App() {
     if(!formData.name || !formData.description) return;
     await API.graphql({query: createTodoMutation,
       variables: { input: formData } });
+    if (formData.image) {
+      const image = await Storage.get(formData.image);
+      formData.image = image;
+    }
     setTodos([ ...todos, formData ]);
     setFormData(initialFormState);
   }
@@ -42,6 +57,14 @@ function App() {
     setTodos(newTodosArray);
     await API.graphql({query: deleteTodoMutation,
       variables: { input: { id } } });
+  }
+
+  async function onChange(e) {
+    if (!e.target.files[0]) return
+    const file = e.target.files[0];
+    setFormData({ ...formData, image: file.name });
+    await Storage.put(file.name, file);
+    fetchTodos();
   }
 
   return (
@@ -57,6 +80,10 @@ function App() {
         placeholder="Todo description"
         value={formData.description}
       />
+      <input
+        type="file"
+        onChange={onChange}
+      />
       <button onClick={createTodo}>Create Todo</button>
       <div style={{marginBottom: 30}}>
         {
@@ -65,6 +92,9 @@ function App() {
               <h2>{todo.name}</h2>
               <p>{todo.description}</p>
               <button onClick={() => deleteTodo(todo)}>Delete Todo</button>
+              {
+                todo.image && <img src={todo.image} alt={todo.name} tyle={{width: 400}} />
+              }
             </div>
           ))
         }
